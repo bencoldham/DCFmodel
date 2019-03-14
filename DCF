@@ -1,0 +1,143 @@
+import requests
+import urllib.request
+from bs4 import BeautifulSoup
+import re
+from itertools import chain
+from selenium import webdriver
+import time
+import xlwings
+from sklearn import linear_model
+import matplotlib.pyplot as plt
+
+#specify FCF url
+quote_FCF = 'https://www.marketwatch.com/investing/stock/AAPL/financials/cash-flow'
+FCFpage =  requests.get(quote_FCF)
+
+#parse FCF into beautifulsoup
+FCFsoup = BeautifulSoup(FCFpage.text, 'html5lib')
+FCFname = FCFsoup.find_all('td', attrs={'class':'valueCell'})
+
+#strip text
+FCFname2 =[]
+for [x] in FCFname:
+    a= str(x).replace("'",'')
+    FCFname2.append(a)
+print(FCFname2)
+
+#get 5 FCF prior 5 years
+FCF=[]
+n=0
+while n<5:
+    FCF.append(FCFname2[(275 + n)])
+    n+=1
+print(FCF)
+
+#scraping FCF into numeric
+FCFnumber = []
+n =0
+while n<5:
+    FCFnumber.append(re.findall(r'\d*\.?\d+', FCF[n])[0])
+    n+=1
+print(FCFnumber)
+
+#Get multiplier
+FCFmultiplier = []
+n =0
+while n<5:
+    FCFmultiplier.append(re.findall("[a-zA-Z]+", FCF[n])[0])
+    n+=1
+print(FCFmultiplier)
+
+#Assign int based on multiplier
+FCFfinal = []
+n=0
+while n<5:
+    if FCFmultiplier[n] == "B":
+        FCFfinal.append(float(FCFnumber[n])*1000000000)
+    n+=1
+print(FCFfinal)
+
+#linear regression for growth
+year = [[0],[1],[2],[3],[4]]
+print(year)
+plt.scatter(year,FCFfinal)
+plt.xlabel("year")
+plt.xlabel("height")
+reg=linear_model.LinearRegression()
+reg.fit(year, FCFfinal)
+'''plot graph?'''
+
+#slope and intercept
+m=reg.coef_[0]
+b=reg.intercept_
+print("slope=",m, "intercept=",b)
+
+#forecast FCF
+futureyears = [5, 6, 7, 8, 9]
+FCFforecast = [(i*m+b) for i in futureyears]
+print(FCFforecast)
+
+#Specify WACC url
+quote_WACC = 'https://finbox.io/aapl/models/wacc'
+driver = webdriver.Chrome()
+driver.get(quote_WACC)
+time.sleep(5)
+WACCpage = driver.page_source
+driver.close()
+
+#Parse WACC into beautifulsoup (jscript)
+WACCsoup = BeautifulSoup(WACCpage, 'html5lib')
+WACCname = WACCsoup.find_all('div', attrs={'class':'value'})
+
+#strip text
+WACCname2 =[]
+for [x] in WACCname:
+    b= str(x).replace("'",'')
+    WACCname2.append(b)
+print(WACCname2)
+
+#scraping WACC into numeric
+WACCnumber = []
+n =0
+while n<3:
+    WACCnumber.append(re.findall(r'\d*\.?\d+', WACCname2[n])[0])
+    n+=1
+print(WACCnumber)
+print(type(WACCnumber[2]))
+
+#Excel inputs
+bookname = r'C:\Users\Ben\Desktop\Python\DCF model\indname.xls'
+industrysheet = 'US'
+multiplesheet = 'Multiples'
+
+#read in industry
+workbook = xlwings.Book(bookname)
+sheet = workbook.sheets[industrysheet]
+cell = workbook.sheets[industrysheet].api.UsedRange.Find('AAPL').address
+print(cell)
+industry = sheet.range(cell.replace("A", "C")).value
+print(industry)
+
+#read in exit multiple
+sheet = workbook.sheets[multiplesheet]
+cell = workbook.sheets[multiplesheet].api.UsedRange.Find(industry).address
+print(cell)
+exitmultiple = sheet.range(cell.replace("A", "H")).value
+print(exitmultiple)
+
+#feed in data
+DCF =[]
+n=0
+print(WACCnumber[1])
+for i in FCFforecast:
+    DCF.append(i/(1+(float(WACCnumber[1])/100))**n)
+    n+=1
+print(DCF)
+
+#quit excel
+app = xlwings.apps.active
+app.quit()
+
+'''4. deal with null entries?'''
+'''5. input ticker'''
+'''low medium high wacc input'''
